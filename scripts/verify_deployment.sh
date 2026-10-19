@@ -28,9 +28,12 @@ CORE_ID="${HUNTY_CORE_ID:?Set HUNTY_CORE_ID}"
 RM_ID="${REWARD_MANAGER_ID:?Set REWARD_MANAGER_ID}"
 NFT_ID="${NFT_REWARD_ID:?Set NFT_REWARD_ID}"
 
-EXPECTED_CORE_VERSION="${EXPECTED_CORE_VERSION:-1}"
-EXPECTED_RM_VERSION="${EXPECTED_RM_VERSION:-1}"
-EXPECTED_NFT_VERSION="${EXPECTED_NFT_VERSION:-1}"
+# RewardManager exposes CONTRACT_VERSION = 2. HuntyCore and NftReward have no
+# `contract_version` entrypoint, so their expectations default to empty and the
+# version check is skipped unless explicitly set.
+EXPECTED_CORE_VERSION="${EXPECTED_CORE_VERSION:-}"
+EXPECTED_RM_VERSION="${EXPECTED_RM_VERSION:-2}"
+EXPECTED_NFT_VERSION="${EXPECTED_NFT_VERSION:-}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 PASS=0; FAIL=0
@@ -45,18 +48,31 @@ check() {
   fi
 }
 
+# Build the common invoke argument list, appending --source-account only when set.
+invoke_args() {
+  INVOKE_ARGS=(
+    --id "$1"
+    --rpc-url "$RPC_URL"
+    --network-passphrase "$PASSPHRASE"
+  )
+  if [[ -n "${SOURCE_ACCOUNT:-}" ]]; then
+    INVOKE_ARGS+=(--source-account "$SOURCE_ACCOUNT")
+  fi
+  INVOKE_ARGS+=(-- "${@:2}")
+}
+
 invoke() {
-  stellar contract invoke \
-    --id "$1" \
-    --rpc-url "$RPC_URL" \
-    --network-passphrase "$PASSPHRASE" \
-    --source-account "${SOURCE_ACCOUNT:-}" \
-    -- "${@:2}" 2>/dev/null
+  invoke_args "$@"
+  stellar contract invoke "${INVOKE_ARGS[@]}" 2>/dev/null
 }
 
 version_check() {
   local id="$1" expected="$2" label="$3"
   local got
+  if [[ -z "$expected" ]]; then
+    echo "  [SKIP] $label version check (no expected version configured)"
+    return 0
+  fi
   got=$(invoke "$id" contract_version 2>/dev/null || echo "")
   if [[ "$got" == *"$expected"* ]]; then
     echo "  [PASS] $label version = $expected"
@@ -97,8 +113,10 @@ version_check "$NFT_ID"  "$EXPECTED_NFT_VERSION"  "NftReward"
 
 echo ""
 echo "--- Liveness (get_health_dashboard) ---"
-check "HuntyCore health"     stellar contract invoke --id "$CORE_ID" --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" -- get_health_dashboard
-check "RewardManager health" stellar contract invoke --id "$RM_ID"  --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" -- get_health_dashboard
+invoke_args "$CORE_ID" get_health_dashboard
+check "HuntyCore health"     stellar contract invoke "${INVOKE_ARGS[@]}"
+invoke_args "$RM_ID" get_health_dashboard
+check "RewardManager health" stellar contract invoke "${INVOKE_ARGS[@]}"
 
 echo ""
 echo "--- Cross-Contract Wiring ---"
@@ -115,9 +133,12 @@ assert_link "RewardManager->HuntyCore distributor" "$RM_ID" get_distributor "$CO
 
 echo ""
 echo "--- Schema Versions ---"
-check "HuntyCore schema"    stellar contract invoke --id "$CORE_ID" --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" -- get_schema_version
-check "RewardManager schema" stellar contract invoke --id "$RM_ID"  --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" -- get_schema_version
-check "NftReward schema"    stellar contract invoke --id "$NFT_ID"  --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" -- get_schema_version
+invoke_args "$CORE_ID" get_schema_version
+check "HuntyCore schema"    stellar contract invoke "${INVOKE_ARGS[@]}"
+invoke_args "$RM_ID" get_schema_version
+check "RewardManager schema" stellar contract invoke "${INVOKE_ARGS[@]}"
+invoke_args "$NFT_ID" get_schema_version
+check "NftReward schema"    stellar contract invoke "${INVOKE_ARGS[@]}"
 
 echo ""
 echo "--- NFT Max Supply ---"

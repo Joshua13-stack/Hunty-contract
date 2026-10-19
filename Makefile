@@ -4,8 +4,8 @@ PYTHON ?= python3
 SHA256 ?= sha256sum
 DOCS_OUTPUT := docs/contract-api.md
 
-.PHONY: build bindings all clean generate-api-docs check check-wasm-abi setup-githooks
-.PHONY: build bindings all clean generate-api-docs check setup-githooks benchmark-compare
+.PHONY: build bindings all clean generate-api-docs docs check check-wasm-abi setup-githooks
+.PHONY: build bindings all clean generate-api-docs docs check setup-githooks benchmark-compare
 # macOS compatibility: check for shasum (pre-installed on macOS) and fall back to sha256sum.
 ifeq ($(shell uname -s),Darwin)
   SHA256 = shasum -a 256
@@ -15,11 +15,15 @@ endif
 
 all: build bindings
 
-build: generate-api-docs
-	cargo build --workspace --target wasm32v1-none --release
+# soroban-sdk 28 requires the spec-shaking v2 build flag for plain cargo
+# builds; `stellar contract build` sets it automatically.
+build:
+	stellar contract build
 
 generate-api-docs:
 	$(PYTHON) scripts/generate_api_docs.py --output $(DOCS_OUTPUT)
+
+docs: generate-api-docs
 
 # Compute SHA-256 hash of a WASM file and retrieve the current git commit.
 # Stamps both into the binding's package.json under `contractHash` and

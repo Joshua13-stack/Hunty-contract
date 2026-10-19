@@ -25,7 +25,7 @@ jobs:
         run: cargo +1.91.0 install --locked stellar-cli --version 25.2.0
 
       - name: Build contracts
-        run: cargo build --workspace --target wasm32v1-none --release
+        run: stellar contract build
 
       - name: Generate TypeScript bindings
         run: make bindings
